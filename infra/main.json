@@ -1,0 +1,307 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.45.15.27210",
+      "templateHash": "7639216848913895417"
+    }
+  },
+  "parameters": {
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "pp-sentinel-connector",
+      "metadata": {
+        "description": "Name prefix used to derive resource names (Function App, plan, storage, etc.)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources. Defaults to the resource group location."
+      }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the existing Log Analytics workspace (Sentinel workspace) in this resource group."
+      }
+    },
+    "ppBaseApi": {
+      "type": "string",
+      "defaultValue": "https://api.perception-point.io",
+      "metadata": {
+        "description": "PerceptionPoint API base URL."
+      }
+    },
+    "ppAuthToken": {
+      "type": "securestring",
+      "metadata": {
+        "description": "PerceptionPoint API auth token."
+      }
+    },
+    "ppOrgId": {
+      "type": "string",
+      "metadata": {
+        "description": "PerceptionPoint organization ID."
+      }
+    },
+    "retentionInDays": {
+      "type": "int",
+      "defaultValue": 90,
+      "metadata": {
+        "description": "How long ingested data is retained in the custom tables, in days."
+      }
+    }
+  },
+  "variables": {
+    "storageAccountName": "[toLower(replace(format('{0}stor', parameters('namePrefix')), '-', ''))]",
+    "functionAppName": "[format('{0}-func', parameters('namePrefix'))]",
+    "hostingPlanName": "[format('{0}-plan', parameters('namePrefix'))]",
+    "appInsightsName": "[format('{0}-ai', parameters('namePrefix'))]",
+    "dceName": "[format('{0}-dce', parameters('namePrefix'))]",
+    "dcrName": "[format('{0}-dcr', parameters('namePrefix'))]",
+    "scansTableName": "PerceptionPoint_Scans_CL",
+    "auditsTableName": "PerceptionPoint_Audits_CL",
+    "scansStreamName": "Custom-PerceptionPointScans",
+    "auditsStreamName": "Custom-PerceptionPointAudits",
+    "monitoringMetricsPublisherRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
+    "rawJsonColumns": [
+      {
+        "name": "TimeGenerated",
+        "type": "datetime"
+      },
+      {
+        "name": "RawData",
+        "type": "dynamic"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/tables",
+      "apiVersion": "2022-10-01",
+      "name": "[format('{0}/{1}', parameters('logAnalyticsWorkspaceName'), variables('scansTableName'))]",
+      "properties": {
+        "schema": {
+          "name": "[variables('scansTableName')]",
+          "columns": "[variables('rawJsonColumns')]"
+        },
+        "retentionInDays": "[parameters('retentionInDays')]",
+        "totalRetentionInDays": "[parameters('retentionInDays')]"
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/tables",
+      "apiVersion": "2022-10-01",
+      "name": "[format('{0}/{1}', parameters('logAnalyticsWorkspaceName'), variables('auditsTableName'))]",
+      "properties": {
+        "schema": {
+          "name": "[variables('auditsTableName')]",
+          "columns": "[variables('rawJsonColumns')]"
+        },
+        "retentionInDays": "[parameters('retentionInDays')]",
+        "totalRetentionInDays": "[parameters('retentionInDays')]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionEndpoints",
+      "apiVersion": "2023-03-11",
+      "name": "[variables('dceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "networkAcls": {
+          "publicNetworkAccess": "Enabled"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2023-03-11",
+      "name": "[variables('dcrName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]",
+        "streamDeclarations": {
+          "[format('{0}', variables('scansStreamName'))]": {
+            "columns": "[variables('rawJsonColumns')]"
+          },
+          "[format('{0}', variables('auditsStreamName'))]": {
+            "columns": "[variables('rawJsonColumns')]"
+          }
+        },
+        "destinations": {
+          "logAnalytics": [
+            {
+              "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+              "name": "logAnalyticsDest"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": [
+              "[variables('scansStreamName')]"
+            ],
+            "destinations": [
+              "logAnalyticsDest"
+            ],
+            "transformKql": "source",
+            "outputStream": "[format('Custom-{0}', variables('scansTableName'))]"
+          },
+          {
+            "streams": [
+              "[variables('auditsStreamName')]"
+            ],
+            "destinations": [
+              "logAnalyticsDest"
+            ],
+            "transformKql": "source",
+            "outputStream": "[format('Custom-{0}', variables('auditsTableName'))]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('logAnalyticsWorkspaceName'), variables('auditsTableName'))]",
+        "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('logAnalyticsWorkspaceName'), variables('scansTableName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('hostingPlanName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic"
+      },
+      "kind": "functionapp",
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp,linux",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "PYTHON|3.11",
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "python"
+            },
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "true"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            {
+              "name": "PP_BASE_API",
+              "value": "[parameters('ppBaseApi')]"
+            },
+            {
+              "name": "PP_AUTH_TOKEN",
+              "value": "[parameters('ppAuthToken')]"
+            },
+            {
+              "name": "PP_ORG_ID",
+              "value": "[parameters('ppOrgId')]"
+            },
+            {
+              "name": "DCE_ENDPOINT",
+              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), '2023-03-11').logsIngestion.endpoint]"
+            },
+            {
+              "name": "DCR_IMMUTABLE_ID",
+              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName')), '2023-03-11').immutableId]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]",
+        "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName'))]",
+        "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName'))]",
+      "name": "[guid(resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('monitoringMetricsPublisherRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[variables('monitoringMetricsPublisherRoleId')]",
+        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2022-09-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "functionAppName": {
+      "type": "string",
+      "value": "[variables('functionAppName')]"
+    },
+    "dceEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), '2023-03-11').logsIngestion.endpoint]"
+    },
+    "dcrImmutableId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName')), '2023-03-11').immutableId]"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+name: Build ARM template from Bicep
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/main.bicep
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      - name: Compile main.bicep to main.json
+        run: az bicep build --file infra/main.bicep --outfile infra/main.json
+
+      - name: Commit updated main.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add infra/main.json
+          git diff --staged --quiet || git commit -m "Regenerate infra/main.json from infra/main.bicep"
+          git push
