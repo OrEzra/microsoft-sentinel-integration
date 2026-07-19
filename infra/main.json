@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.45.15.27210",
-      "templateHash": "7639216848913895417"
+      "templateHash": "11591324367211705495"
     }
   },
   "parameters": {
@@ -54,6 +54,13 @@
       "metadata": {
         "description": "How long ingested data is retained in the custom tables, in days."
       }
+    },
+    "functionAppPackageUri": {
+      "type": "string",
+      "defaultValue": "https://github.com/OrEzra/microsoft-sentinel-integration/releases/latest/download/function-app.zip",
+      "metadata": {
+        "description": "URL of the prebuilt function app deployment package the Function App runs from (WEBSITE_RUN_FROM_PACKAGE). Defaults to the latest build from this repo's main branch. Point this at your own fork's release if you've modified the Python code, or set it to an empty string to deploy code manually instead (see README)."
+      }
     }
   },
   "variables": {
@@ -77,7 +84,8 @@
         "name": "RawData",
         "type": "dynamic"
       }
-    ]
+    ],
+    "runFromPackageAppSettings": "[if(empty(parameters('functionAppPackageUri')), createArray(), createArray(createObject('name', 'WEBSITE_RUN_FROM_PACKAGE', 'value', parameters('functionAppPackageUri'))))]"
   },
   "resources": [
     {
@@ -222,48 +230,7 @@
         "httpsOnly": true,
         "siteConfig": {
           "linuxFxVersion": "PYTHON|3.11",
-          "appSettings": [
-            {
-              "name": "AzureWebJobsStorage",
-              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value)]"
-            },
-            {
-              "name": "FUNCTIONS_EXTENSION_VERSION",
-              "value": "~4"
-            },
-            {
-              "name": "FUNCTIONS_WORKER_RUNTIME",
-              "value": "python"
-            },
-            {
-              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
-              "value": "true"
-            },
-            {
-              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
-              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
-            },
-            {
-              "name": "PP_BASE_API",
-              "value": "[parameters('ppBaseApi')]"
-            },
-            {
-              "name": "PP_AUTH_TOKEN",
-              "value": "[parameters('ppAuthToken')]"
-            },
-            {
-              "name": "PP_ORG_ID",
-              "value": "[parameters('ppOrgId')]"
-            },
-            {
-              "name": "DCE_ENDPOINT",
-              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), '2023-03-11').logsIngestion.endpoint]"
-            },
-            {
-              "name": "DCR_IMMUTABLE_ID",
-              "value": "[reference(resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName')), '2023-03-11').immutableId]"
-            }
-          ]
+          "appSettings": "[concat(createArray(createObject('name', 'AzureWebJobsStorage', 'value', format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value)), createObject('name', 'FUNCTIONS_EXTENSION_VERSION', 'value', '~4'), createObject('name', 'FUNCTIONS_WORKER_RUNTIME', 'value', 'python'), createObject('name', 'SCM_DO_BUILD_DURING_DEPLOYMENT', 'value', 'true'), createObject('name', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'value', reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString), createObject('name', 'PP_BASE_API', 'value', parameters('ppBaseApi')), createObject('name', 'PP_AUTH_TOKEN', 'value', parameters('ppAuthToken')), createObject('name', 'PP_ORG_ID', 'value', parameters('ppOrgId')), createObject('name', 'DCE_ENDPOINT', 'value', reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), '2023-03-11').logsIngestion.endpoint), createObject('name', 'DCR_IMMUTABLE_ID', 'value', reference(resourceId('Microsoft.Insights/dataCollectionRules', variables('dcrName')), '2023-03-11').immutableId)), variables('runFromPackageAppSettings'))]"
         }
       },
       "dependsOn": [

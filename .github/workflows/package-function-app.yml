@@ -1,0 +1,50 @@
+name: Package function app
+
+# Builds a ready-to-run deployment package and publishes it as the "latest"
+# GitHub release. infra/main.bicep points WEBSITE_RUN_FROM_PACKAGE at this
+# release by default, so deploying the template also deploys this build.
+#
+# Requires Settings -> Actions -> General -> Workflow permissions -> "Read and
+# write permissions", so this workflow can publish a release.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - PerceptionPointSentinelConnector/**
+      - host.json
+      - requirements.txt
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # .python_packages/lib/site-packages is on sys.path for apps running
+      # from WEBSITE_RUN_FROM_PACKAGE (no remote build happens there).
+      - name: Install dependencies into the deployment package
+        run: pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+
+      - name: Build function-app.zip
+        run: |
+          zip -r function-app.zip \
+            host.json requirements.txt PerceptionPointSentinelConnector .python_packages \
+            -x '*__pycache__*' -x '*.pyc'
+
+      - name: Publish as the "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest function app package
+          make_latest: 'true'
+          files: function-app.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -26,6 +26,9 @@ param ppOrgId string
 @description('How long ingested data is retained in the custom tables, in days.')
 param retentionInDays int = 90
 
+@description('URL of the prebuilt function app deployment package the Function App runs from (WEBSITE_RUN_FROM_PACKAGE). Defaults to the latest build from this repo\'s main branch. Point this at your own fork\'s release if you\'ve modified the Python code, or set it to an empty string to deploy code manually instead (see README).')
+param functionAppPackageUri string = 'https://github.com/OrEzra/microsoft-sentinel-integration/releases/latest/download/function-app.zip'
+
 var storageAccountName = toLower(replace('${namePrefix}stor', '-', ''))
 var functionAppName = '${namePrefix}-func'
 var hostingPlanName = '${namePrefix}-plan'
@@ -177,6 +180,62 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   }
 }
 
+var baseAppSettings = [
+  {
+    name: 'AzureWebJobsStorage'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+  }
+  {
+    name: 'FUNCTIONS_EXTENSION_VERSION'
+    value: '~4'
+  }
+  {
+    name: 'FUNCTIONS_WORKER_RUNTIME'
+    value: 'python'
+  }
+  {
+    // Ensures a remote (Oryx) build runs on deploy, installing requirements.txt server-side.
+    // Only relevant for zip-deploy-based publishing paths (VS Code extension, Deployment Center,
+    // `func azure functionapp publish`) — ignored while WEBSITE_RUN_FROM_PACKAGE is set below.
+    name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+    value: 'true'
+  }
+  {
+    name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+    value: appInsights.properties.ConnectionString
+  }
+  {
+    name: 'PP_BASE_API'
+    value: ppBaseApi
+  }
+  {
+    name: 'PP_AUTH_TOKEN'
+    value: ppAuthToken
+  }
+  {
+    name: 'PP_ORG_ID'
+    value: ppOrgId
+  }
+  {
+    name: 'DCE_ENDPOINT'
+    value: dce.properties.logsIngestion.endpoint
+  }
+  {
+    name: 'DCR_IMMUTABLE_ID'
+    value: dcr.properties.immutableId
+  }
+]
+
+// Wires the Function App up to run directly from a prebuilt package, so a single
+// deployment provisions the infra AND deploys working code. Left out entirely when
+// functionAppPackageUri is empty, e.g. for customers who intend to publish code themselves.
+var runFromPackageAppSettings = empty(functionAppPackageUri) ? [] : [
+  {
+    name: 'WEBSITE_RUN_FROM_PACKAGE'
+    value: functionAppPackageUri
+  }
+]
+
 resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
   name: functionAppName
   location: location
@@ -189,51 +248,7 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'PYTHON|3.11'
-      appSettings: [
-        {
-          name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
-        }
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'python'
-        }
-        {
-          // Ensures a remote (Oryx) build runs on deploy, installing requirements.txt server-side.
-          // Needed for zip-deploy-based publishing paths (VS Code extension, Deployment Center) —
-          // `func azure functionapp publish` triggers this itself regardless of the setting.
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'true'
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsights.properties.ConnectionString
-        }
-        {
-          name: 'PP_BASE_API'
-          value: ppBaseApi
-        }
-        {
-          name: 'PP_AUTH_TOKEN'
-          value: ppAuthToken
-        }
-        {
-          name: 'PP_ORG_ID'
-          value: ppOrgId
-        }
-        {
-          name: 'DCE_ENDPOINT'
-          value: dce.properties.logsIngestion.endpoint
-        }
-        {
-          name: 'DCR_IMMUTABLE_ID'
-          value: dcr.properties.immutableId
-        }
-      ]
+      appSettings: concat(baseAppSettings, runFromPackageAppSettings)
     }
   }
 }
