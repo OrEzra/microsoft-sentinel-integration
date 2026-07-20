@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.45.15.27210",
-      "templateHash": "11591324367211705495"
+      "templateHash": "1607430237837230296"
     }
   },
   "parameters": {
@@ -57,9 +57,9 @@
     },
     "functionAppPackageUri": {
       "type": "string",
-      "defaultValue": "https://github.com/OrEzra/microsoft-sentinel-integration/releases/latest/download/function-app.zip",
+      "defaultValue": "https://raw.githubusercontent.com/OrEzra/microsoft-sentinel-integration/main/dist/function-app.zip",
       "metadata": {
-        "description": "URL of the prebuilt function app deployment package the Function App runs from (WEBSITE_RUN_FROM_PACKAGE). Defaults to the latest build from this repo's main branch. Point this at your own fork's release if you've modified the Python code, or set it to an empty string to deploy code manually instead (see README)."
+        "description": "URL of the prebuilt function app deployment package the Function App runs from (WEBSITE_RUN_FROM_PACKAGE). Must be a stable, direct URL (not one that redirects to a short-lived signed link) for Azure's remote-package loader to fetch it reliably. Defaults to the latest build from this repo's main branch. Point this at your own fork's build if you've modified the Python code, or set it to an empty string to deploy code manually instead (see README)."
       }
     }
   },

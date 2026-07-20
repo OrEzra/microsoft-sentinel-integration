@@ -26,8 +26,8 @@ param ppOrgId string
 @description('How long ingested data is retained in the custom tables, in days.')
 param retentionInDays int = 90
 
-@description('URL of the prebuilt function app deployment package the Function App runs from (WEBSITE_RUN_FROM_PACKAGE). Defaults to the latest build from this repo\'s main branch. Point this at your own fork\'s release if you\'ve modified the Python code, or set it to an empty string to deploy code manually instead (see README).')
-param functionAppPackageUri string = 'https://github.com/OrEzra/microsoft-sentinel-integration/releases/latest/download/function-app.zip'
+@description('URL of the prebuilt function app deployment package the Function App runs from (WEBSITE_RUN_FROM_PACKAGE). Must be a stable, direct URL (not one that redirects to a short-lived signed link) for Azure\'s remote-package loader to fetch it reliably. Defaults to the latest build from this repo\'s main branch. Point this at your own fork\'s build if you\'ve modified the Python code, or set it to an empty string to deploy code manually instead (see README).')
+param functionAppPackageUri string = 'https://raw.githubusercontent.com/OrEzra/microsoft-sentinel-integration/main/dist/function-app.zip'
 
 var storageAccountName = toLower(replace('${namePrefix}stor', '-', ''))
 var functionAppName = '${namePrefix}-func'
