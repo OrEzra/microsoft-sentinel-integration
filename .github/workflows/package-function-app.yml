@@ -30,10 +30,20 @@ jobs:
         with:
           python-version: '3.11'
 
-      # .python_packages/lib/site-packages is on sys.path for apps running
-      # from WEBSITE_RUN_FROM_PACKAGE (no remote build happens there).
+      # .python_packages/lib/site-packages is on sys.path for apps running from
+      # WEBSITE_RUN_FROM_PACKAGE (no remote build happens there). The platform/
+      # python-version/only-binary flags force wheels built for an older glibc
+      # baseline than this ubuntu-latest runner has, matching the older glibc
+      # in the actual Azure Functions Linux runtime (otherwise compiled deps
+      # like cryptography fail at import with a GLIBC version mismatch).
       - name: Install dependencies into the deployment package
-        run: pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+        run: |
+          pip install -r requirements.txt \
+            --target=".python_packages/lib/site-packages" \
+            --platform manylinux2014_x86_64 \
+            --implementation cp \
+            --python-version 3.11 \
+            --only-binary=:all:
 
       - name: Build function-app.zip
         run: |
