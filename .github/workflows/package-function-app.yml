@@ -1,11 +1,13 @@
 name: Package function app
 
-# Builds a ready-to-run deployment package and publishes it as the "latest"
-# GitHub release. infra/main.bicep points WEBSITE_RUN_FROM_PACKAGE at this
-# release by default, so deploying the template also deploys this build.
+# Builds a ready-to-run deployment package and commits it to dist/function-app.zip.
+# infra/main.bicep points WEBSITE_RUN_FROM_PACKAGE at this file's raw.githubusercontent.com
+# URL by default, so deploying the template also deploys this build. A stable, direct URL
+# is required here: GitHub Releases redirect to a short-lived signed CDN link, which
+# Azure's remote-package loader on Linux Consumption fails to fetch.
 #
 # Requires Settings -> Actions -> General -> Workflow permissions -> "Read and
-# write permissions", so this workflow can publish a release.
+# write permissions", so this workflow can commit the built package back to the repo.
 
 on:
   push:
@@ -39,12 +41,13 @@ jobs:
             host.json requirements.txt PerceptionPointSentinelConnector .python_packages \
             -x '*__pycache__*' -x '*.pyc'
 
-      - name: Publish as the "latest" release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest function app package
-          make_latest: 'true'
-          files: function-app.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit dist/function-app.zip
+        run: |
+          mkdir -p dist
+          mv function-app.zip dist/function-app.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/function-app.zip
+          git diff --staged --quiet || git commit -m "Rebuild dist/function-app.zip"
+          git pull --rebase origin main
+          git push

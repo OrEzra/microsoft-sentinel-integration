@@ -121,7 +121,7 @@ If you fork this repo and change the Python connector, the default
 `functionAppPackageUri`, so a manual code deploy won't take effect on its own.
 Pick one:
 
-- **Point at your own build** — in your fork, enable **Settings → Actions → General → Workflow permissions → Read and write permissions**, then deploy with `functionAppPackageUri=https://github.com/<your-org>/<your-repo>/releases/latest/download/function-app.zip`.
+- **Point at your own build** — in your fork, enable **Settings → Actions → General → Workflow permissions → Read and write permissions**, then deploy with `functionAppPackageUri=https://raw.githubusercontent.com/<your-org>/<your-repo>/main/dist/function-app.zip`.
 - **Deploy manually instead** — redeploy with `functionAppPackageUri=` (empty), or remove `WEBSITE_RUN_FROM_PACKAGE` via **Function App → Configuration** in the portal. Then use Deployment Center, VS Code (Azure Functions extension → **Deploy to Function App...**), or `func azure functionapp publish <functionAppName>`.
 
 ## Updating
