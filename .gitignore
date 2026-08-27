@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Azure Functions
+local.settings.json
+.python_packages/
+bin/
+obj/
+.azure/
+.vscode/
+
+# Environment / secrets
+.env
+*.env.local
+
+# OS / editor
+.DS_Store
+*.swp
