@@ -95,8 +95,13 @@ class APIBaseConnector:
         self.base_url = url
 
     def set_time_range(self):
-        end_time = datetime.now(timezone.utc).timestamp()
-        start_time = end_time - 60*5
+        if self.start_time is None:
+            end_time = datetime.now(timezone.utc).timestamp()
+            start_time = end_time - 60*5
+        else:
+            end_time = datetime.now(timezone.utc).timestamp()
+            start_time = self.end_time + 0.1
+
         self.start_time = start_time
         self.end_time = end_time
         logger.info(f'Time range set to {self.start_time} - {self.end_time}')
@@ -203,6 +208,7 @@ class APIBaseConnector:
             yield audits
 
     def post_to_sentinel(self, log_type):
+        logger.info(f'Starting post_to_sentinel for log_type={log_type}')
         if log_type == 'Audits':
             self.set_audit_start()
         else:
