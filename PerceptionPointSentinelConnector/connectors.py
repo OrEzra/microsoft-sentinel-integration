@@ -62,7 +62,7 @@ class APIBaseConnector:
         return {'Authorization': f'Token {self.token}'}
 
     @property
-    def base_params(self):
+    def scan_params(self):
         params = {
             'organization_id': self.organization['id'],
             'start': int(self.start_time),
@@ -70,6 +70,15 @@ class APIBaseConnector:
         }
         return params
 
+    @property
+    def audit_params(self):
+        # Audits send start only (no end), so the API returns up to now.
+        params = {
+            'organization_id': self.organization['id'],
+            'start': int(self.start_time),
+        }
+        return params
+    
     @property
     def organization(self):
         if self._organization is None:
@@ -86,16 +95,15 @@ class APIBaseConnector:
         self.base_url = url
 
     def set_time_range(self):
-        if self.start_time is None:
-            end_time = datetime.now(timezone.utc).timestamp()
-            start_time = end_time - 60*5
-        else:
-            end_time = datetime.now(timezone.utc).timestamp()
-            start_time = self.end_time + 0.1
-
+        end_time = datetime.now(timezone.utc).timestamp()
+        start_time = end_time - 60*5
         self.start_time = start_time
         self.end_time = end_time
         logger.info(f'Time range set to {self.start_time} - {self.end_time}')
+
+    def set_audit_start(self):
+        self.start_time = datetime.now(timezone.utc).timestamp() - 60*5
+        self.end_time = None
 
 
     def get(self, url, **kwargs):
@@ -117,7 +125,7 @@ class APIBaseConnector:
         status_code, scans = self.fetch_data(
             url=self.SCANS_ENDPOINT,
             params={
-                **self.base_params,
+                **self.scan_params,
                 # 'count_agg[]': 'verbose_verdict',
                 '!whitelist_tags': 'simulation',
                 '!sample_type_str': 'outbound-email',
@@ -140,7 +148,7 @@ class APIBaseConnector:
             status_code, scans = self.fetch_data(
                 url=scans['next'],
                 params={
-                    **self.base_params,
+                    **self.scan_params,
                     # 'count_agg[]': 'verbose_verdict',
                     '!whitelist_tags': 'simulation',
                     '!sample_type_str': 'outbound-email',
@@ -161,7 +169,7 @@ class APIBaseConnector:
         status_code, audits = self.fetch_data(
             url=self.AUDITS_ENDPOINT,
             params={
-                **self.base_params,
+                **self.audit_params,
                 'limit': 500
             }
         )
@@ -181,7 +189,7 @@ class APIBaseConnector:
             status_code, audits = self.fetch_data(
                 url=audits['next'],
                 params={
-                    **self.base_params,
+                    **self.audit_params,
                     'limit': 500
                 }
             )
@@ -195,8 +203,10 @@ class APIBaseConnector:
             yield audits
 
     def post_to_sentinel(self, log_type):
-        logger.info(f'Starting post_to_sentinel for log_type={log_type}')
-        self.set_time_range()
+        if log_type == 'Audits':
+            self.set_audit_start()
+        else:
+            self.set_time_range()
 
         if log_type == 'Scans':
             for result in self.fetch_scans_chunks():
