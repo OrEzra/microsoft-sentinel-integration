@@ -106,7 +106,7 @@ class APIBaseConnector:
         logger.info(f'Time range set to {self.start_time} - {self.end_time}')
 
     def set_audit_start(self):
-        self.start_time = datetime.now(timezone.utc).timestamp() - 60*60*24
+        self.start_time = datetime.now(timezone.utc).timestamp() - 60*5
         self.end_time = None
         logger.info(f'Audit start set to {self.start_time}')
 
