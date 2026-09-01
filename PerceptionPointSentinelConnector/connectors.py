@@ -95,11 +95,10 @@ class APIBaseConnector:
         self.base_url = url
 
     def set_time_range(self):
-        if self.start_time is None:
-            end_time = datetime.now(timezone.utc).timestamp()
+        end_time = datetime.now(timezone.utc).timestamp()
+        if self.end_time is None:
             start_time = end_time - 60*5
         else:
-            end_time = datetime.now(timezone.utc).timestamp()
             start_time = self.end_time + 0.1
 
         self.start_time = start_time
@@ -107,8 +106,9 @@ class APIBaseConnector:
         logger.info(f'Time range set to {self.start_time} - {self.end_time}')
 
     def set_audit_start(self):
-        self.start_time = datetime.now(timezone.utc).timestamp() - 60*5
+        self.start_time = datetime.now(timezone.utc).timestamp() - 60*60*24
         self.end_time = None
+        logger.info(f'Audit start set to {self.start_time}')
 
 
     def get(self, url, **kwargs):
