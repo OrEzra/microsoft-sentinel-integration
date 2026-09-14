@@ -25,6 +25,7 @@ def main(mytimer: func.TimerRequest) -> None:
                                 org_id=ORG_ID,
                                 dce_endpoint=DCE_ENDPOINT,
                                 dcr_immutable_id=DCR_IMMUTABLE_ID)
+    connector.set_time_range()
 
     for log_type in log_types:
         logger.info(f'Processing log_type={log_type}')
