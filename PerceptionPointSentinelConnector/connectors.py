@@ -1,7 +1,7 @@
 import logging
 import requests
 from urllib.parse import urljoin
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from azure.identity import DefaultAzureCredential
 from azure.monitor.ingestion import LogsIngestionClient
@@ -18,15 +18,15 @@ class MicrosoftSentinelConnector:
 
     @staticmethod
     def _to_logs(records):
-        time_generated = datetime.now(timezone.utc).isoformat()
+        time_generated = datetime.now(UTC).isoformat()
         return [{'TimeGenerated': time_generated, 'RawData': record} for record in records]
 
     def _on_upload_error(self, error):
-        logger.warning(f'Error while sending a chunk of events to Azure Sentinel: {error.error}')
+        logger.error(f'Error while sending a chunk of events to Azure Sentinel: {error.error}')
 
     def send(self, scans, log_type):
         if not scans:
-            logger.debug(f'No {log_type} events to send to Azure Sentinel, skipping upload')
+            logger.info(f'No {log_type} events to send to Azure Sentinel, skipping upload')
             return
 
         stream_name = f'Custom-PerceptionPoint{log_type}'
@@ -62,7 +62,7 @@ class APIBaseConnector:
         return {'Authorization': f'Token {self.token}'}
 
     @property
-    def scan_params(self):
+    def base_params(self):
         params = {
             'organization_id': self.organization['id'],
             'start': int(self.start_time),
@@ -70,15 +70,6 @@ class APIBaseConnector:
         }
         return params
 
-    @property
-    def audit_params(self):
-        # Audits send start only (no end), so the API returns up to now.
-        params = {
-            'organization_id': self.organization['id'],
-            'start': int(self.start_time),
-        }
-        return params
-    
     @property
     def organization(self):
         if self._organization is None:
@@ -91,29 +82,17 @@ class APIBaseConnector:
         return self._organization
 
     def set_base_url(self, url):
-        logger.debug(f'Setting base URL to {url}')
+        logger.info(f'Setting base URL to {url}')
         self.base_url = url
 
     def set_time_range(self):
-        end_time = datetime.now(timezone.utc).timestamp()
-        if self.end_time is None:
-            start_time = end_time - 60*5
-        else:
-            start_time = self.end_time + 0.1
-
-        self.start_time = start_time
-        self.end_time = end_time
+        self.start_time = datetime.now(UTC).timestamp() - 60*15
+        self.end_time = self.start_time + 60*5
         logger.info(f'Time range set to {self.start_time} - {self.end_time}')
-
-    def set_audit_start(self):
-        self.start_time = datetime.now(timezone.utc).timestamp() - 60*5
-        self.end_time = None
-        logger.info(f'Audit start set to {self.start_time}')
-
 
     def get(self, url, **kwargs):
         modified_url = urljoin(self.base_url, url)
-        logger.debug(f'GET {modified_url} params={kwargs.get("params")}')
+        logger.info(f'GET {modified_url} params={kwargs.get("params")}')
         return self.api.get(modified_url, **kwargs)
 
     def fetch_data(self, url=None, params={}):
@@ -122,7 +101,7 @@ class APIBaseConnector:
         else:
             endpoint = self.SCANS_ENDPOINT
         response = self.get(endpoint, params=params)
-        logger.debug(f'Received response {response.status_code} from {endpoint}')
+        logger.info(f'Received response {response.status_code} from {endpoint}')
         return response.status_code, response
 
     def fetch_scans_chunks(self):
@@ -130,16 +109,16 @@ class APIBaseConnector:
         status_code, scans = self.fetch_data(
             url=self.SCANS_ENDPOINT,
             params={
-                **self.scan_params,
+                **self.base_params,
                 # 'count_agg[]': 'verbose_verdict',
                 '!whitelist_tags': 'simulation',
                 '!sample_type_str': 'outbound-email',
-                'limit': 500
+                'limit': 100
             }
         )
 
         if status_code != 200:
-            logger.warning(f'ERROR: {status_code}, {scans.text}')
+            logger.error(f'ERROR: {status_code}, {scans.text}')
             return {}
 
         scans = scans.json()
@@ -150,19 +129,10 @@ class APIBaseConnector:
             return {}
 
         while scans['has_more']:
-            status_code, scans = self.fetch_data(
-                url=scans['next'],
-                params={
-                    **self.scan_params,
-                    # 'count_agg[]': 'verbose_verdict',
-                    '!whitelist_tags': 'simulation',
-                    '!sample_type_str': 'outbound-email',
-                    'limit': 500
-                }
-            )
+            status_code, scans = self.fetch_data(url=scans['next'])
 
             if status_code != 200:
-                logger.warning(f'ERROR: {status_code}, {scans.text}')
+                logger.error(f'ERROR: {status_code}, {scans.text}')
                 return {}
 
             scans = scans.json()
@@ -174,13 +144,13 @@ class APIBaseConnector:
         status_code, audits = self.fetch_data(
             url=self.AUDITS_ENDPOINT,
             params={
-                **self.audit_params,
-                'limit': 500
+                **self.base_params,
+                'limit': 100
             }
         )
 
         if status_code != 200:
-            logger.warning(f'ERROR: {status_code}, {audits.text}')
+            logger.error(f'ERROR: {status_code}, {audits.text}')
             return {}
 
         audits = audits.json()
@@ -191,16 +161,10 @@ class APIBaseConnector:
             return {}
 
         while audits['has_more']:
-            status_code, audits = self.fetch_data(
-                url=audits['next'],
-                params={
-                    **self.audit_params,
-                    'limit': 500
-                }
-            )
+            status_code, audits = self.fetch_data(url=audits['next'])
 
             if status_code != 200:
-                logger.warning(f'ERROR: {status_code}, {audits.text}')
+                logger.error(f'ERROR: {status_code}, {audits.text}')
                 return {}
 
             audits = audits.json()
@@ -209,10 +173,6 @@ class APIBaseConnector:
 
     def post_to_sentinel(self, log_type):
         logger.info(f'Starting post_to_sentinel for log_type={log_type}')
-        if log_type == 'Audits':
-            self.set_audit_start()
-        else:
-            self.set_time_range()
 
         if log_type == 'Scans':
             for result in self.fetch_scans_chunks():
